@@ -1,4 +1,4 @@
-from collections import deque
+from collections import deque, heapq
 
 def valid(s):
     F, W, G, C = s
@@ -95,7 +95,139 @@ def ids(start,goal,max_limit =20):
     return None
 
     
+def uniform_cost_search(start, goal):
+    # cost for each move is 1 (could be changed)
+    pq = []  # elements are (cost, state)
+    heapq.heappush(pq, (0, start))
+    came_from = {start: None}
+    cost_so_far = {start: 0}
 
+    while pq:
+        cost, state = heapq.heappop(pq)
+        if state == goal:
+            # reconstruct path
+            path = []
+            cur = state
+            while cur is not None:
+                path.append(cur)
+                cur = came_from[cur]
+            path.reverse()
+            return path
+
+        for nxt in moves(state):
+            new_cost = cost_so_far[state] + 1  # every action cost = 1
+            if nxt not in cost_so_far or new_cost < cost_so_far[nxt]:
+                cost_so_far[nxt] = new_cost
+                came_from[nxt] = state
+                heapq.heappush(pq, (new_cost, nxt))
+    return None
+
+# --------------------------
+# Bidirectional Search
+# --------------------------
+def reconstruct_bidirectional(meet_node, parents_fwd, parents_bwd):
+    # build forward path from start to meet_node
+    path_fwd = []
+    cur = meet_node
+    while cur is not None:
+        path_fwd.append(cur)
+        cur = parents_fwd.get(cur, None)
+    path_fwd.reverse()  # now start -> meet_node
+
+    # build backward path from meet_node to goal (exclude meet_node to avoid duplicate)
+    path_bwd = []
+    cur = parents_bwd.get(meet_node, None)  # node after meet_node in backward tree
+    while cur is not None:
+        path_bwd.append(cur)
+        cur = parents_bwd.get(cur, None)
+
+    return path_fwd + path_bwd
+
+def bidirectional_search(start, goal):
+    if start == goal:
+        return [start]
+
+    # frontier queues
+    q_fwd = deque([start])
+    q_bwd = deque([goal])
+    parents_fwd = {start: None}
+    parents_bwd = {goal: None}
+    visited_fwd = {start}
+    visited_bwd = {goal}
+
+    while q_fwd and q_bwd:
+        # expand one level forward
+        for _ in range(len(q_fwd)):
+            s = q_fwd.popleft()
+            for nxt in moves(s):
+                if nxt not in visited_fwd:
+                    parents_fwd[nxt] = s
+                    visited_fwd.add(nxt)
+                    q_fwd.append(nxt)
+                    if nxt in visited_bwd:
+                        # meet point
+                        return reconstruct_bidirectional(nxt, parents_fwd, parents_bwd)
+
+        # expand one level backward
+        for _ in range(len(q_bwd)):
+            s = q_bwd.popleft()
+            # moves(s) gives legal moves from s (i.e., successors). For backward expansion we need predecessors.
+            # Because the transition relation is symmetric (moving farmer +/- item toggles bits),
+            # successors and predecessors sets are identical here — we can reuse moves(s).
+            for nxt in moves(s):
+                if nxt not in visited_bwd:
+                    parents_bwd[nxt] = s
+                    visited_bwd.add(nxt)
+                    q_bwd.append(nxt)
+                    if nxt in visited_fwd:
+                        # meet point
+                        return reconstruct_bidirectional(nxt, parents_fwd, parents_bwd)
+
+    return None
+
+# --------------------------
+# A* Search
+# --------------------------
+def heuristic(state, goal):
+    # simple admissible heuristic: number of items (wolf, goat, cabbage) not yet at goal side
+    # indices 1,2,3 correspond to W,G,C; farmer at index 0
+    # each move can move at most one item, so we need at least that many moves (admissible).
+    # This heuristic ignores that farmer has to return sometimes, so it's admissible (often weak).
+    return abs(state[1] - goal[1]) + abs(state[2] - goal[2]) + abs(state[3] - goal[3])
+
+def a_star(start, goal):
+    open_heap = []
+    heapq.heappush(open_heap, (heuristic(start, goal), 0, start))  # (f = g+h, g, state)
+    came_from = {start: None}
+    g_score = {start: 0}
+    closed = set()
+
+    while open_heap:
+        f, g, state = heapq.heappop(open_heap)
+        if state == goal:
+            # reconstruct
+            path = []
+            cur = state
+            while cur is not None:
+                path.append(cur)
+                cur = came_from[cur]
+            path.reverse()
+            return path
+
+        if state in closed:
+            continue
+        closed.add(state)
+
+        for nxt in moves(state):
+            tentative_g = g_score[state] + 1
+            if nxt in closed and tentative_g >= g_score.get(nxt, float('inf')):
+                continue
+            if tentative_g < g_score.get(nxt, float('inf')):
+                came_from[nxt] = state
+                g_score[nxt] = tentative_g
+                f_score = tentative_g + heuristic(nxt, goal)
+                heapq.heappush(open_heap, (f_score, tentative_g, nxt))
+    return None
 
 
 start = (0,0,0,0)
